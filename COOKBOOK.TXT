@@ -1,0 +1,942 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                             OS/2 THREADS COOKBOOK                             _____________________
+
+
+
+
+
+                                  Version 1.1
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                  Stephen Best
+                                 P.O. Box 3097
+                              Manuka  A.C.T.  2603
+                                   Australia
+
+                            Phone:    61-6-281-2147
+                            FidoNet:    3:620/243.4
+                            CompuServe:  100033,340
+
+
+
+
+
+
+
+
+
+
+
+                        Copyright (c) 1991  Stephen Best
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+         This document  is an  attempt to  collect together and share a
+         number of my observations and ideas about programming for OS/2
+         Presentation Manager  using multiple threads that have evolved
+         over time  and been  gleaned (gratefully) from other explorers
+         in this  area. A  thorough understanding of the use of threads
+         is essential  for construction  of all  but the  most  trivial
+         Presentation Manager  programs and  it is hoped that the ideas
+         contained herein  with be  of aid  to programmers beginning to
+         tap into  the exciting  possibilities that the use of multiple
+         threads introduce.
+
+
+         If you  would like  a copy  of the  latest  revision  of  this
+         document (nicely  printed on  my laser) together with a floppy
+         disk (3.5  inch only) containing the full 32 bit source of the
+         examples given,  please send  $35 ($150  for corporations)  in
+         either Australian  or US  currency to me at the address above.
+         This amount  also entitles the licensee to use the source from
+         the examples given in any programs of their own.
+
+         Also, if  you have  any comments at all regarding the material
+         contained herein,  including errors  and omissions, I would be
+         more that happy to hear of them.
+
+
+
+         Stephen Best
+
+         24 July, 1991
+
+
+
+
+
+
+
+
+                                     Contents
+                                     ________
+
+
+
+         Introduction                                                 3
+
+         What is a thread?                                            4
+
+         Message queues                                               5
+
+         Performance and restrictions                                 7
+
+         Managing threads                                             9
+
+         Window data                                                 10
+
+         Example 1                                                   10
+
+         Example 2                                                   12
+
+         Other Possibilities                                         14
+
+         Conclusion                                                  14
+
+         References                                                  16
+
+
+
+
+
+         OS/2 Threads Cookbook                                  page  3
+
+
+
+         Introduction         ____________
+
+         OS/2  as   a  single   user  system   has  the   potential  to
+         substantially change  the  user's  perspective  as  to  how  a
+         personal computer should work. Programs using multiple threads
+         can not  only increase  execution performance  (both perceived
+         and actual)  but also  change the emphasis in user-application
+         interaction to  one  where  the  user  has  more  control  and
+         flexibility and  where  the  application  itself  takes  on  a
+         passive role.  The  program  should  always  be  receptive  to
+         interaction with  the user even if this is just the capability
+         for that  user to  change  his/her  mind  after  initiating  a
+         lengthy activity.
+
+         Users that  repeatedly tell  you  that  "they  don't  need  to
+         multitask" will  have great  difficulty in reverting to single
+         threaded software  after having had the luxury of using a well
+         designed  and   responsive  multi-threaded  application.  Thus
+         anyone wishing  to compete  in the market may have a hard time
+         selling their  product in  an increasingly aware public arena.
+         It is  also hoped  that all programmers will want to wring the
+         maximum result  from an  environment for  their efforts, and I
+         think multiple  threads have the potential for good returns in
+         this area.
+
+         It is  also true,  though not  universally  appreciated,  that
+         programming to the multi-threaded model has significant impact
+         on the  overall program  design, and  it is  important to have
+         this in  mind up  front to  avoid major  restructuring of  the
+         program at a later stage.
+
+
+         This document  is aimed  at the OS/2 programmer wishing to tap
+         into  the   power  that   programming  with  multiple  threads
+         provides. As  such, I  will attempt to cover all the essential
+         issues related  to threads,  a guide to where and when I think
+         threads are  applicable and  some substantial  coding examples
+         that I think demonstrate this. These examples are in C and are
+         for OS/2 2.x, though conversion to other languages and/or OS/2
+         1.x  should  not  be  too  difficult  once  the  concepts  are
+         understood.
+
+         Note that my coding style dictates that maximum use be made of
+         the  native  OS/2  API  and  as  such  no  Microsoft  specific
+         extensions (such  as _beginthread)  are used.  My hope is that
+         the life  of the document (and the coding examples) will carry
+         into OS/2's future on RISC platforms.
+
+         All code  has been  developed and tested under the MS OS/2 2.0
+         SDK Pre-release  3 running  on  an  IBM  PS/2  Model  80.  The
+         Microsoft C  386 compiler,  linker etc  included with this SDK
+
+
+
+
+
+         OS/2 Threads Cookbook                                  page  4
+
+
+         have been  used (with  the only modification being replacement
+         of the  C run-time  prefix  and  malloc  functions  with  self
+         developed routines available elsewhere).
+
+
+         It is  my  belief  that  practically  ALL  programs  for  OS/2
+         Presentation Manager  will benefit from using multiple threads
+         in their  design, and  indeed have  a responsibility  to do so
+         given the  message  switching  architecture  of  PM.  Comments
+         (especially those  from sources  with  a  vested  interest  in
+         promoting second  rate software products) that there is only a
+         minimal requirement  for multi-threaded  program design should
+         be considered  in the  light  of  the  immediate  and  obvious
+         benefits that their proper use can achieve.
+
+         Polemics over, let's learn about OS/2 threads.
+
+
+         What is a thread?         _________________
+
+         The thread  is the  basic level of execution under OS/2 and is
+         roughly equivalent to the task of other systems. A program (or
+         process) has a single thread at the beginning of its execution
+         and can  optionally split  the activity of that program over a
+         number of  threads. Each  thread of  execution will  be  time-
+         sliced on  the processor  (CPU) of  the computer together with
+         other  threads   of  that  application,  and  those  of  other
+         applications active  concurrently. A priority mechanism exists
+         to ensure  that the thread with the highest priority is always
+         active, with  control passing  to other  threads  of  a  lower
+         priority when  the higher  'blocks' or is waiting on an event.
+         On  top   of  this  OS/2  has  a  sophisticated  scheduler  to
+         dynamically  alter   thread  priority  to  achieve  responsive
+         overall performance or multitasking within the system.
+
+         Note that  splitting a  single processor intensive task over a
+         number of  threads does  not in itself achieve anything as the
+         processor itself  is a  finite resource which cannot be driven
+         beyond its  capacity. Indeed  the housekeeping  in alternately
+         dispatching threads  may slow down execution in this case. (It
+         may be worthwhile though to keep in mind that a future version
+         of OS/2 may well support multiple physical processors, and the
+         requirement for  dividing compute  bound tasks  will change in
+         this case).
+
+         The criteria  for dividing a process into threads as discussed
+         herein is  aimed at  isolating the  activity of  a program  by
+         either priority, functional units or access to a resource.
+
+         Consider an  application which presents the user with a number
+         of child  windows, of  which only  one (the active window) can
+         receive the  keyboard focus  at a  time. An example of this is
+
+
+
+
+
+         OS/2 Threads Cookbook                                  page  5
+
+
+         MDI (Multiple  Document Interface)  applications. It  would in
+         this case  make sense to give the active/focus window a higher
+         priority than  the others,  if concurrent  activity  in  other
+         windows is likely to impede the responsiveness of the one with
+         which the  user is  interacting at  that  time.  This  can  be
+         achieved  quite  easily  by  assigning  each  window  its  own
+         'worker' thread  and setting  the priority of the active/focus
+         window thread  higher than  that of its siblings. In this case
+         the thread  for the  active window  will receive the processor
+         resource that  it requires without interference from the other
+         windows,  aiding   in  the  perceived  responsiveness  of  the
+         application.
+
+         Actual overall  efficiency  can  be  achieved  by  overlapping
+         processor intensive tasks with those for input/output eg. disk
+         I/O. OS/2,  as a  true pre-emptive  multitasking  system,  can
+         balance  the   priorities  between   processes   to   maximize
+         throughput but  it  is  the  application's  responsibility  to
+         separate  within  itself  lengthy  I/O  tasks  from  processor
+         intensive ones,  and especially those likely to interfere with
+         servicing of  the system message queue (more on this important
+         area later).  For example,  if a user initiates a lengthy file
+         open/save operation or printing activity it should be possible
+         to interrupt  this activity  if the user changes his/her mind,
+         or still  interact with  other facets  of the  application  in
+         parallel with the I/O activity. Failure to split this activity
+         off from  the primary  thread  can  even  inhibit  the  user's
+         ability to  switch to  another unrelated  application  on  the
+         desktop. In  this case,  it may  be advantageous  to  spawn  a
+         thread  specifically   for  servicing   the  disk  or  printer
+         asynchronously. The main thread could then off-load such tasks
+         and 'queue'  them to  a background thread, and get on business
+         of interacting  with the user. Note that in this case it makes
+         no sense  to have  a number  of  threads for a single resource
+         (like a printer) as no efficiency is gained.
+
+         It may  be helpful  to think  of a  one for one correspondence
+         between threads  and 'resources'  (be they windows or the disk
+         or a  printer), with  a 'master'  thread interacting  with the
+         user (and  hence the system message queue). It is this concept
+         of resource  based threads  that will be expounded upon in the
+         following.
+
+
+         Message queues         ______________
+
+         Presentation Manager  (among other  GUI systems) has a message
+         switching architecture  to facilitate  the routing of messages
+         of different  types among  the  'windows'  that  make  up  the
+         presentation  layer  for  OS/2.  An  application  can  receive
+         messages from the system eg. when a user attempts to re-size a
+         window, or can send messages to itself or other windows in the
+
+
+
+
+
+         OS/2 Threads Cookbook                                  page  6
+
+
+         system.  Messages   can  either   be  SENT   (explicitly  with
+         WinSendMsg or  implicitly with  a large  number of  other  API
+         calls eg.  WinSetWindowText) or POSTed (with WinPostMsg). Sent
+         messages (and  those API  calls that  result in sent messages)
+         will be  turned into  direct calls to the window procedure for
+         the window specified in the send. Posted messages on the other
+         hand will  be queued  in the  application's message  queue for
+         deferred execution.
+
+         The application  message queue  is created  by the application
+         itself with  WinCreateMsgQueue and  it is  the act of doing so
+         that distinguishes  that application as a Presentation Manager
+         one (as  opposed to  a character mode application executing in
+         its own  session). An  application may  create as many message
+         queues as  desired provided that only one message queue exists
+         for each thread. Message queues other than the primary one are
+         optional in  multi-threaded  applications  and  the  following
+         examples  will   attempt   to   demonstrate   where   multiple
+         application message queues might be applicable.
+
+         Messages queued  on a  message queue  (by the  system  or  the
+         application itself)  are un-queued  with (generally) WinGetMsg
+         in a  message loop  and then  dispatched  to  the  appropriate
+         window procedure  with WinDispatchMsg. This WinDispatchMsg can
+         be thought  of as  turning the  POSTed message into a SEND for
+         immediate execution.  In both  cases, the  window handle given
+         specifies the  appropriate window  procedure for  that message
+         ... the  association between  window handle and procedure (for
+         other than  pre-registered classes) is made by the application
+         with    the     combination    of     WinRegisterClass     and
+         WinCreate(Std)Window.
+
+         The system  message queue  (of which there is only one for the
+         whole Presentation Manager session) is provided to queue those
+         'messages'  that  will  be  subsequently  distributed  to  the
+         appropriate application message queue(s) at such time that the
+         context  of   the  message  can  be  determined.  The  primary
+         consideration here  is user  input (both  keyboard  and  mouse
+         actions) that  may occur  asynchronously  to  the  application
+         message flow.  The 'problem'  for  PM  programs  is  that  the
+         application processing  of any  message can  itself change the
+         destination for  keyboard and  mouse messages  pending in  the
+         system message queue (eg. explicitly with calls WinSetFocus or
+         WinSetCapture) and  thus it  is only  when PM  itself  regains
+         control from  prior messages  that it is possible to determine
+         the appropriate  application  queue  in  which  to  place  the
+         keyboard  or  mouse  message.  In  addition,  the  program  is
+         responsible for processing messages dealing with loss of focus
+         and activation  before other  windows can  be  activated.  The
+         implication for  a PM  program is  that it  should  always  be
+         available for  processing user  input events,  and process all
+         incoming messages quickly.
+
+
+
+
+
+         OS/2 Threads Cookbook                                  page  7
+
+
+
+         The methodologies discussed in this document are aimed at off-
+         loading  the  bulk  of  the  processing  requirement  for  the
+         application from  the 'input'  message thread  to other  'non-
+         input' threads,  making the  application always  receptive  to
+         user input,  and thus  increasing the  responsiveness  of  the
+         application and  the system  as a  whole. It may be helpful to
+         consider that  serialisation of keyboard and mouse messages in
+         the system  queue is  not so  much a  'problem' to be overcome
+         with adding  threads, but  that the main 'input' thread of the
+         application is  just a  vehicle for  receiving input  from the
+         system  and   like  all   shared  resources,   to  be  treated
+         accordingly.
+
+
+         Performance and restrictions         ____________________________
+
+         Sent messages  can  be  processed  approximately  three  times
+         faster than  posted messages  because they never appear in the
+         message queue  of the  application and  thus avoid the message
+         loop altogether. The throughput of inter thread posts has been
+         measured to  be slower by another factor of three. This is not
+         to say  that posts  should be  avoided, but  that  it  may  be
+         desirable to  use sends rather than posts when an clear choice
+         exists between the two. Sends also have the guarantee that any
+         dynamic memory area addressed by the message parameter(s) will
+         remain current for the life of the send, which is a benefit if
+         more data  than the  eight bytes permitted with the two 32 bit
+         message parameters  themselves is  required. As  a bonus,  the
+         return code  from the  receiving window  procedure  method  is
+         available upon completion of the send. Sends (because they are
+         translated into  calls to the window procedure) will cause the
+         window procedure(s)  to be  called recursively,  and thus  may
+         place excessive  demands on the program stack with high levels
+         of recursion.
+
+         Posts on  the other hand, because of their asynchronous nature
+         will be serialised in the message queue and processed when the
+         application itself  enters message loop processing. This means
+         that any dynamic data addressed by message parameters when the
+         post was  issued may  no longer  be valid.  This consideration
+         requires a  number of  differing techniques  to transfer  more
+         data than  the message  parameters themselves  permit. Another
+         important point  to note  about posts  is that the message may
+         not actually be posted should the message queue be full at the
+         time of  the post. The return code from WinPostMsg should thus
+         be checked  to see  if the  post  was  in  fact  accepted  and
+         implementing a  delayed retry  or  some  pacing  algorithm  to
+         ensure the  message is not lost. Despite the above, posts will
+         play a  big part  in  the  interaction  of  and  communication
+         between  threads   and  thus   the  techniques  for  achieving
+         efficient and reliable use of them is presented herein.
+
+
+
+
+
+         OS/2 Threads Cookbook                                  page  8
+
+
+
+         Another difference  between sends  and posts is the context in
+         which it  is valid  to issue them. Posts can be issued without
+         restriction between  threads and  will appear  in the  message
+         queue of  the thread  with which  the window addressed (by the
+         window  handle   specified)  was   created.  A   variation  on
+         WinPostMsg is  WinPostQueueMsg where the handle of the message
+         queue itself  is specified  instead of the window handle. This
+         permits an  application to  queue messages  to another  thread
+         (assuming the  receiving thread  has created  its own  message
+         queue) when  no actual  window procedure  may exist  for  that
+         thread.  This  variation  will  be  explored  in  one  of  the
+         following examples.
+
+         Sends on  the other  hand can  only be  issued between threads
+         each having  a message queue, and for reasons following should
+         be   avoided    for   anything   other   than   intra   thread
+         communications. Firstly,  sends  to  a  window  created  on  a
+         different thread  than that from which the send is issued will
+         still execute  in the context of that window's thread and thus
+         may incur  a performance  penalty due to the overhead involved
+         in the required thread switch. In addition, inter thread sends
+         (and API  calls that  result in  sends to  other threads)  may
+         result in  a deadlock situation should the receiving thread be
+         waiting (using say a semaphore) on some event from the calling
+         thread  at   the  time   the  send   is  issued.   (Note  that
+         WinMsgMuxSemWait exists  specifically to  avoid this  deadlock
+         situation.) The  temptation may  be  to  think  that  creating
+         windows  each   on  separate  threads  will  permit  extensive
+         processing without interference with the overall message flow,
+         but it  must be remembered that all threads that create a (non
+         object) window  are subject  to the  same  input  restrictions
+         discussed above. It is because of these reasons that I propose
+         creation of  all windows  on the  initial thread and exclusive
+         use of posts for inter thread communications in this document.
+
+         The above  brings up  the important concept of distribution of
+         responsibilities within  the application.  The model I use and
+         propound herein  is that  the main  (initial) thread  be  used
+         almost exclusively  for window  'management'.  Thus  ALL  (non
+         object) windows  will be  created (or  'owned') by this thread
+         and  any   activity  likely   to  involve  more  than  minimal
+         processing off-loaded  to non-window  'service'  threads.  The
+         main thread (simply because of the fact that this is where the
+         windows were  created) will be the sole 'input' thread subject
+         to the  keyboard/mouse message  restrictions discussed  above.
+         All other  threads can  thus undertake  substantial processing
+         tasks (or  waits) without  impacting the application's ability
+         to  appear   responsive  to   user  interaction.   Using  this
+         demarcation of  processing responsibility, it is unlikely that
+         the problem of using inter thread sends will arise.
+
+
+
+
+
+         OS/2 Threads Cookbook                                  page  9
+
+
+
+         Managing threads         ________________
+
+         Threads (over  and above  the initial  one allocated  when the
+         program  begins   execution)  are   created  explicitly   with
+         DosCreateThread.  Each   thread  will   have  its   own  stack
+         (allocated and  committed dynamically  with 2.x) but share all
+         code and  data areas  of the parent process. Optionally a word
+         long parameter  can be  passed to  the thread at this time and
+         this word  is normally  used to  address thread initialization
+         data (or  'thread parameters'). A thread so created will exist
+         for the  life of  the program  execution (process)  unless  it
+         terminates itself  by 'returning'  or making a call to DosExit
+         (with EXIT_THREAD).
+
+         Due to  any overhead  in creating/destroying  a thread  it  is
+         normal to  have the thread life tied to the 'owning' window or
+         dialog box  or failing  that, the entire process. There are no
+         rules as  to  how  many  threads  should  be  created  in  the
+         'average' program as this will be governed by the activity and
+         resource requirements  of each. One way of deciding the number
+         (and more  importantly, function)  of threads  to create is to
+         consider how  many of  the elements  of the  program you would
+         like to run in parallel. Thus a program which creates a number
+         of windows  (all of  which require  extensive  graphics)  plus
+         provides for  background printing may create a thread for each
+         window, with another for servicing the printer queue. Or maybe
+         all the  windows could  share a  single drawing  thread if the
+         processing requirements  are smaller.  The final consideration
+         of thread  numbers and function will depend on both the degree
+         of interactivity  and visible  feel the  programmer wishes  to
+         create with  the  program  and  how  logically  functions  are
+         isolated internally in the program itself. (Realistically, the
+         same end  result may  be achieved  by creating  only a  single
+         'service'  thread   in  addition   to  the   main  thread  and
+         alternately allocating  time to  the respective resources, but
+         maintaining the  desired balance  may require  duplicating the
+         function of  the OS/2  scheduler itself,  and  hence  be  self
+         defeating.)
+
+         A  number   of  other   API  calls  are  related  to  threads.
+         DosWaitThread  (new   with  2.x)  allows  the  thread  'owner'
+         (actually any  thread) to  wait until  the specified thread is
+         terminated and thus can be used when the owner itself is being
+         destroyed  for   clean-up  operations.   DosSuspendThread  and
+         DosResumeThread  allow  another  thread  to  temporarily  halt
+         execution of  the specified  thread, and resume operation at a
+         later time.  Due to  the fact  that it  will probably  not  be
+         possible to  predict the  exact  stage  of  operation  of  the
+         specified thread, these calls may not prove to be that useful,
+         and indeed  a similar effect can be achieved by resetting that
+         thread's priority.  DosSetPriority can  be used  to  modify  a
+
+
+
+
+
+         OS/2 Threads Cookbook                                 page  10
+
+
+         thread's priority,  or to  place the  thread  in  a  different
+         dispatching class.  DosEnterCritSec and  DosExitCritSec can be
+         used to temporarily disallow execution of all other threads in
+         the process  when serialized access to a resource of some type
+         must  be   guaranteed,  and  using  mutex  semaphores  is  not
+         appropriate. Finally,  DosSleep can  be used  by a  thread  to
+         surrender the  remainder of  its dispatching  time slice or to
+         delay execution for a specified amount of time.
+
+         In addition to the above, OS/2 has a rich set of inter-process
+         communication facilities,  such as  semaphores and pipes which
+         may be  used for  thread control and transferring data between
+         threads.
+
+
+         Window data         ___________
+
+         Each window procedure associated with a window class will have
+         some data  to be  retained over  the life  of the  window,  or
+         between processing  of messages.  This 'static'  data  can  be
+         initialized when  the window  procedure receives its WM_CREATE
+         or WM_INITDLG  message and  updated  depending  on  subsequent
+         message flow.  It is  common practise  to place  such 'static'
+         data in  a dynamically  allocated area of memory and have this
+         addressed  by   a  window  'pointer'.  Thus  an  area  of  the
+         appropriate size  will be  allocated (with  malloc)  when  the
+         window is  created and  the address  of this  area saved  in a
+         window 'word'  with WinSetWindowPtr.  The address of this area
+         will be  retrieved with WinQueryWindowPtr immediately prior to
+         processing of  all other  messages for  the  window,  and  the
+         memory area  disposed of (with free) in WM_DESTROY processing.
+         Thus if  multiple 'instances'  of the window are created, each
+         window can  be assured  of integrity of its own data. This can
+         have an added benefit in reducing the total EXE file size, and
+         more importantly  promotes what I believe to be a good 'object
+         oriented' programming  style. Though  not directly  related to
+         using threads,  the concept  of  data  encapsulation  will  be
+         rigidly exploited in the coding examples contained herein.
+
+
+         Example 1         _________
+
+         The first example below is the complete window procedure for a
+         file search dialog. This dialog provides the user with a means
+         to search  a number  of disks  for a  specified file,  or ones
+         matching the  given  'mask'  criteria.  The  user  enters  the
+         desired file name (with or without free characters), selects a
+         number of  disks and  presses the  'start'  button.  Once  the
+         search is  initiated, the  'start' button changes its function
+         to 'stop'  to enable  the user to interrupt the active search.
+         As files  are found  that match the search criteria, they will
+         be added  to a  list box  which can  be scrolled  and an entry
+
+
+
+
+
+         OS/2 Threads Cookbook                                 page  11
+
+
+         selected even  though the search is still active, enabling the
+         user to  exit with  the selected  file without waiting for the
+         search to  complete. The  'stop' button reverts to its 'start'
+         function when the search is complete. Whilst this search is in
+         progress, the user can move the dialog window or interact with
+         other applications on the desktop.
+
+         The virtue  of using a separate thread for this type of dialog
+         is that  the I/O  intensive logic  for scanning  the directory
+         list(s) for the specified files can be segregated from that of
+         interacting with  the user.  The end  result is  that  maximum
+         flexibility of  interaction is  achieved without impacting the
+         speed of the actual search.
+
+
+         This dialog  window procedure creates the search thread in the
+         WM_INITDLG processing and terminates the thread in WM_DESTROY,
+         thus the thread exists for the life of the dialog session. The
+         search thread  issues a  mux wait  on two  event semaphores: a
+         'trigger' to  initiate a new search and a 'terminate' event to
+         signal thread  termination. Once  the search is active, it can
+         be interrupted  by setting  the fInterrupt flag TRUE, and this
+         flag is checked periodically in the search process.
+
+         As files  are found  that match  the specified  criteria,  the
+         search thread  posts a UM_SEARCHUPDATE message to the 'owning'
+         thread to  signal that  the found entry should be added to the
+         list box.  In this  case, we cannot use the message parameters
+         on the post to fully contain the data to be transferred as the
+         file name  length clearly  exceeds the  eight bytes available.
+         What has been done in this example is to use a simplified form
+         of circular buffer, with an 'in' and 'out' count. Thus entries
+         can be added to the buffer when the 'in' count does not exceed
+         the 'out'  count by the total number of entries in the buffer,
+         otherwise we  would overlay data that had not been accepted by
+         the owning  thread. As  the buffer and counters are accessible
+         by both  threads, all that is required is to signal the owning
+         thread that  new data has been added to the list and should be
+         processed. This  is done  here by  equating UM_SEARCHUPDATE to
+         WM_SEM2 and using message parameter 1 as a progress flag, with
+         TRUE  indicating  completion  of  the  search.  The  WM_SEM1-4
+         messages are  special in  that the messages are not stacked in
+         the message  queue, but  accumulated into one message with the
+         message parameter  1 seen  by the  recipient being  the  or'ed
+         result  from  all  the  messages  parameters  posted.  WM_SEM2
+         (rather than  WM_SEM1) was  selected as  the priority  of this
+         message is  lower than  that of  keyboard/mouse messages  thus
+         avoiding any  impact on  user interaction  whilst transferring
+         data. (If  you move  the mouse pointer around rapidly you will
+         notice that the search will slow down.)
+
+
+
+
+
+         OS/2 Threads Cookbook                                 page  12
+
+
+         A few  other observations  on this  example.  Because  of  the
+         nature of  the WM_SEMx  messages, there is no risk of flooding
+         the application  message queue  (and hence  losing a  post) in
+         that there  can be  only one message of this type in the queue
+         at any time. Also, it is likely that a number of found entries
+         can be  transferred for  each post the main thread sees, hence
+         improving the  efficiency of  the transfer.  If  the  circular
+         buffer is  full (indicated  by the  value of the difference in
+         the counters)  the search  thread issues  a  DosSleep  (0)  to
+         surrender the remainder of its dispatching time slice and thus
+         allowing the  main thread  to process  the queued  entries and
+         free up the slots required.
+
+         Another important  element is that the dialog window procedure
+         has been structured to not have to depend synchronously on the
+         action of  the  search  thread,  allowing  the  search  to  be
+         interrupted and  end without  the main  thread logic having to
+         issue a  wait. If it is possible to avoid such waits, an extra
+         level of semaphore handshaking can be omitted.
+
+
+         Example 2         _________
+
+         The second  example is  a window  procedure (together with its
+         'service' thread) for utilizing 'shadow' bitmaps to facilitate
+         fast paints  and  to  off-load  the  bulk  of  the  processing
+         requirement to  a 'non input' thread. A shadow bitmap (as used
+         in this  example) is  the context  for the  drawing operations
+         which can  proceed offline  from the main window procedure and
+         be quickly transferred to the window context with GpiBitBlt in
+         the WM_PAINT  method. This  implementation is  ideal  when  an
+         application can  present the  completed drawing,  rather  than
+         show  the   drawing  activity   in  progress.   Also,  if  the
+         destination window  is to be restored (eg. after being covered
+         by another)  a subsequent  call  to  the  processor  intensive
+         graphics functions is avoided.
+
+         This example differs from the first in that the service thread
+         allocates its  own message  queue, and  communications between
+         threads is achieved with posts (rather than semaphores). Thus,
+         a request  for some  activity can  be 'queued'  to the service
+         thread (with  WinPostQueueMsg) by specifying the handle of the
+         message queue  itself. Note  that WinPostMsg could not be used
+         in this  case as  the service  thread has not actually created
+         any windows  and hence no window handle exists to enable PM to
+         determine which  queue is  applicable. The  service thread has
+         its own message loop to un-queue the posted requests and route
+         to the  appropriate logic  based on  message ID,  and in  this
+         sense is no different from a normal window procedure. When the
+         activity is  complete, the  service thread  posts a completion
+         message to  the 'owning'  thread to  trigger  the  appropriate
+         action (eg.  paint). Lastly,  the service thread is terminated
+
+
+
+
+
+         OS/2 Threads Cookbook                                 page  13
+
+
+         by posting  WM_QUIT to its message queue which causes the loop
+         to terminate.
+
+         The service  thread in this example exists for the life of its
+         'owning'  window,  created  in  WM_CREATE  and  terminated  in
+         WM_DESTROY. As the main procedure must insure that the service
+         thread's message  queue is  valid, a  semaphore is  set by the
+         service thread  when the  queue handle  is  available  to  its
+         owner.
+
+         If multiple  instances of  this window are required, each will
+         have its  own service  thread  and  this  enables  a  priority
+         mechanism to  exist to  ensure that  the active window will be
+         drawn before  other, non-active  windows. This  is achieved in
+         this example  buy  raising  or  lowering  the  service  thread
+         priority (in WM_ACTIVATE) so that the active window's priority
+         is always  higher that its siblings. The priority mechanism is
+         absolute in that the service thread for the active window must
+         'block' (in  WinGetMsg) before  the other windows will receive
+         any processor  resource. Note  that  as  implemented  in  this
+         example this set priority will still be lower than that of the
+         main 'input'  thread to  reduce any  interference with desktop
+         operations.
+
+         When using  this message  queue technique,  it is  possible to
+         optionally check for pending messages posted in the queue with
+         a call  to WinQueryQueueStatus. In this example, as all output
+         posts from  the service  thread are  the same, some processing
+         may be  saved if  processing of the current message is aborted
+         in favour  of pending  messages of  the same type. This should
+         only be  attempted when it can be quaranteed that the sequence
+         of incoming messages is not disturbed.
+
+         This example  has been  structured so  that  the  main  window
+         thread never has to explicitly wait for completion of a posted
+         task (other  than for  thread termination  and  recovery  from
+         failed  posts).  If  serialisation  is  necessary,  semaphores
+         'posted' by  the service thread can be used to delay execution
+         until desired.  Alternatively, the  main thread can wait for a
+         posted completion  message by  using WinGetMsg  and specifying
+         the message identity. In the example given
+
+            WinGetMsg (pw->hab, &qmsg, hwnd,
+                     UM_WINDOWUPDATE, UM_WINDOWUPDATE);
+
+         would delay  the main  thread until  the requested service was
+         complete. Note  that either  of the above (using semaphores or
+         waiting for  completion messages)  issued from  the main input
+         thread will  have the  effect of  stopping flow  in  the  main
+         message queue  of the program, and delay incoming keyboard and
+         mouse messages  system-wide (as  discussed  above).  The  goal
+
+
+
+
+
+         OS/2 Threads Cookbook                                 page  14
+
+
+         should  thus   be  to  structure  the  program  so  that  such
+         serialised dependencies are minimized (or ideally avoided).
+
+
+         Other Possibilities         ___________________
+
+         The above two examples represent a sample of the possibilities
+         of managing  program activity  with multiple threads. A number
+         of other  methodologies exist  which may  prove applicable  to
+         different program requirements.
+
+         A variation  on the  shadow bitmap  example above  is to  give
+         drawing control  of the window presentation space to a service
+         thread.  This  has  the  similar  benefit  in  that  processor
+         intensive graphics  functions can  be off-line  from the  main
+         input thread  with the bonus that the application user can see
+         the drawing  in progress,  rather than  wait  for  the  shadow
+         bitmap to be completed. To do this the program would (probably
+         in WM_CREATE)  associate a  presentation space  to the  window
+         context with  WinOpenWindowDC and  GpiCreatePS and  pass  this
+         presentation space  handle to  the drawing thread. The drawing
+         thread would  thus receive  requests from  the main thread and
+         invoke the  graphics functions  required to draw directly upon
+         the window  presentation space.  Some provision may need to be
+         made for  retaining the results of the drawing activity should
+         a full or partial re-paint be required due to window sizing or
+         restoral.
+
+         An extension  of using threads with their own message queue is
+         to create  object windows  (windows created  with a  parent of
+         HWND_OBJECT). Activity  in such  'windows' is  initiated  with
+         WinPostMsg  as  the  object  window  handle  is  specified  to
+         identify the  appropriate message  queue and  window procedure
+         for that  window. In  all other respects, this is identical to
+         the message queue example above. The use of object windows may
+         be applicable  when a  thread exists  to support  a number  of
+         resources and no overlap in processing is required.
+
+
+         Conclusion         __________
+
+         It is  hoped  that  by  now  the  reader  has  understood  the
+         fundamentals of  why multiple  threads are  applicable to OS/2
+         Presentation  Manager   programs  for  improving  the  overall
+         responsiveness of  the desktop  dictated by  the message queue
+         architecture, and  the  implications  for  presentation  of  a
+         flexible user-application  interface. The existence of threads
+         in OS/2  provides the  application designer with a rich set of
+         techniques to  distribute function  within the  program itself
+         and co-ordinate activity. The goal of the application designer
+         should be  to identify  opportunities for  parallel operation,
+         and to  build the  program with  the  appropriate  threads  to
+
+
+
+
+
+         OS/2 Threads Cookbook                                 page  15
+
+
+         achieve this,  whilst allowing  the user to interrupt or abort
+         any lengthy activity in progress.
+
+         Multiple threads, I feel, offer the means to totally transform
+         a user's  expectation of how personal computer software should
+         work and  hopefully this  document will  help bring about this
+         new age of more responsive and flexible software.
+
+
+
+
+
+         OS/2 Threads Cookbook                                 page  16
+
+
+
+         References         __________
+
+         The following  references  may  be  useful  in  expanding  the
+         reader's understanding  of OS/2 multi-threading techniques and
+         possibilities   as    applicable   to   Presentation   Manager
+         programming:
+
+
+
+         Utilizing OS/2 Multithread Techniques in Presentation Manager         _____________________________________________________________
+         Applications, Charles Petzold         ____________
+
+         Microsoft Systems Journal Vol. 3 No. 2
+
+
+         Planning and Writing a Multithreaded OS/2 Program with         ______________________________________________________
+         Microsoft C, Richard Hale Shaw         ___________
+
+         Microsoft Systems Journal Vol. 4 No. 2
+
+
+         OS/2 PM Programming: A Performance Guide, P.G. Toghill         ________________________________________
+
+         IBM Personal Systems Developer, Winter 1991
+
+
+         A Multithread CPU Monitor, Marc Cohen         _________________________
+
+         OS/2 Notebook, The Best of the IBM Personal Systems Developer,
+         Microsoft Press
+
+
+         Programming for Multithreaded Drawing, Charles Petzold         _____________________________________
+
+         PC Magazine, Vol. 9 Nos. 10-12
+
+
+         Programming the OS/2 Presentation Manager, Charles Petzold         _________________________________________
+
+         Microsoft Press
+
+
+         Inside OS/2, Gordon Letwin         ___________
+
+         Microsoft Press
+
+
+         Microsoft OS/2 Programmer's Reference Vol. 1         ____________________________________________
+
+         Microsoft Press
+
+
+
+
+
+         OS/2 Threads Cookbook                                 page  17
+
+
+
+         Programming Guide         _________________
+
+         IBM OS/2 Programming Tools and Information, Version 1.2
